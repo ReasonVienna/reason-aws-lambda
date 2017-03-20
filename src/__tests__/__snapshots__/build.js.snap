@@ -1,0 +1,23 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`should create test.zip assuming cwd to be a ReasonProject 1`] = `
+Array [
+  Array [
+    "Creating build directory '/some/cwd/_build'...",
+  ],
+  Array [
+    "Created zip /some/cwd/_build/test.zip",
+  ],
+]
+`;
+
+exports[`should create test.zip with a different context path 1`] = `
+Array [
+  Array [
+    "Creating build directory '/some/cwd/_build'...",
+  ],
+  Array [
+    "Created zip /some/cwd/_build/test.zip",
+  ],
+]
+`;
