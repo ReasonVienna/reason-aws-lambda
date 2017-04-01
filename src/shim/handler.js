@@ -1,51 +1,39 @@
 "use strict";
 
-const fs = require("fs");
-const child = require("child_process");
-const byline = require("./byline");
-
-// TODO: Not sure if this is still necessary
 process.env["PATH"] = process.env["PATH"] +
   ":" +
   process.env["LAMBDA_TASK_ROOT"];
 
-module.exports.run = (event, context, callback) => {
-  const proc = child.spawn("./Index.native", {
-    stdio: ["pipe", "pipe", process.stderr],
-    cwd: __dirname,
-    env: process.env
-  });
+const fs = require("fs");
+const os = require("os");
+const child = require("child_process");
+const byline = require("./byline");
+let callback;
 
-  const out = byline(proc.stdout);
+const proc = child.spawn("./Index.native", {
+  stdio: ["pipe", "pipe", process.stderr]
+});
 
-  const lines = [];
+const out = byline(proc.stdout);
 
-  out.on("data", line => {
-    console.log("DATA: " + line);
-    lines.push(line);
-  });
+out.on("data", line => {
+  var msg = JSON.parse(line);
+  callback(null, msg);
+});
 
-  proc.on("error", err => {
-    console.log("ERROR: " + err.message);
-    callback(new Error(`Failed execution: ${err.message}`));
-  });
+proc.on("error", err => {
+  callback(new Error(`Failed execution: ${err.message}`));
+  process.exit(1);
+});
 
-  proc.on("exit", (code, signal) => {
-    console.log("EXIT");
-    console.log(code);
-    console.log(signal);
-    console.log(lines);
-    const stdout = lines.join("\n");
+proc.on("exit", (code, signal) => {
+  console.error("ERROR: ", code, " ", signal);
+  process.exit(1);
+});
 
-    callback(null, { message: stdout });
-  });
+module.exports.run = (event, context, cb) => {
+  callback = cb;
 
-  // const response = {
-  //   status: 200,
-  //   body: JSON.stringify({
-  //     message: stdout
-  //   })
-  // };
-  //
-  // callback(null, response);
+  context.callbackWaitsForEmptyEventLoop = false;
+  proc.stdin.write(JSON.stringify(event) + "\n");
 };

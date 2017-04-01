@@ -1,5 +1,6 @@
 // @flow
 
+const pkgJson = require("../package");
 const path = require("path");
 const exec = require("child_process").exec;
 const fs = require("fs");
@@ -11,12 +12,16 @@ type BuildArtifactArgs = {
   reFile: string,
   zipFile: string,
   context: string,
+  pkgs?: Array<string>,
+  includeDirs?: Array<string>,
   logger?: Logger
 };
 
 type ReasonBuildArgs = {
   nativeFile: string,
   context: string,
+  pkgs: Array<string>,
+  includeDirs: Array<string>,
   logger?: Logger
 };
 
@@ -25,10 +30,32 @@ const DEFAULT_LOGGER = {
   error: console.error
 };
 
+const AWS_INCLUDE = `.${pkgJson.name}`;
+
+function ensureInclude(context: string = ""): Promise<void> {
+  return new Promise((res, rej) => {
+    const fullPath = path.join(context, AWS_INCLUDE);
+
+    try {
+      const stats = fs.statSync(fullPath);
+    } catch (err) {
+      rej(
+        new Error(
+          `Directory ${fullPath} does not exist... run XXX to set it up`
+        )
+      );
+    }
+
+    res();
+  });
+}
+
 function execReasonBuild(args: ReasonBuildArgs): Promise<number> {
   const {
     nativeFile,
     context,
+    pkgs,
+    includeDirs,
     logger: {
       log,
       error
@@ -47,10 +74,12 @@ function execReasonBuild(args: ReasonBuildArgs): Promise<number> {
     error(stderr);
   };
 
-  const child = exec(
-    `eval $(dependencyEnv) && nopam && rebuild -use-ocamlfind -cflag -w -cflag -40 -I . ${nativeFile}`,
-    { stdio: [0, 1, 2], env }
-  );
+  const buildPkgStr = `-pkgs ${pkgs.join(",")}`;
+
+  const cmd = `eval $(dependencyEnv) && nopam && rebuild ${buildPkgStr} -use-ocamlfind -cflag -w -cflag -40 -Is ${includeDirs.join(",")} ${nativeFile}`;
+
+  log(cmd);
+  const child = exec(cmd, { stdio: [0, 0, 0], env, cwd: context });
 
   return new Promise((res, rej) => {
     child.on("exit", code => {
@@ -71,6 +100,8 @@ async function buildArtifact(args: BuildArtifactArgs): Promise<string> {
     reFile,
     zipFile,
     context,
+    pkgs = [],
+    includeDirs = [],
     logger: {
       log,
       error
@@ -80,13 +111,21 @@ async function buildArtifact(args: BuildArtifactArgs): Promise<string> {
   const name = path.basename(reFile, ".re");
   const nativeFile = path.join(path.dirname(reFile), `${name}.native`);
 
+  // TODO: Would be ideal if we could use the node_modules path by default
+  // const awsInclude = path.join('node_modules', pkgJson.name, 'include');
+
   try {
+    await ensureInclude(context);
     await execReasonBuild({
       nativeFile,
+      pkgs: ["yojson"].concat(pkgs),
+      includeDirs: ["src", AWS_INCLUDE].concat(includeDirs),
       context,
       logger: args.logger
     });
-  } catch (e) {}
+  } catch (err) {
+    throw new Error(`Could not compile '${reFile}': ${err.message}`);
+  }
 
   // Package the function
   const output = fs.createWriteStream(zipFile);
